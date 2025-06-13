@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>QQ聊天记录查看器</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Microsoft YaHei", sans-serif;
+      }
+
+      body {
+        background-color: #f5f5f5;
+        padding: 20px;
+        color: #333;
+      }
+
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+        background-color: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      header {
+        background: linear-gradient(135deg, #12c2e9, #c471ed, #f64f59);
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+
+      .search-box {
+        padding: 15px;
+        background-color: #f0f2f5;
+        display: flex;
+        gap: 10px;
+      }
+
+      .search-box input,
+      .search-box select {
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        flex: 1;
+      }
+
+      .search-box button {
+        background-color: #0084ff;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+
+      .search-box button:hover {
+        background-color: #0069d9;
+      }
+
+      .chat-container {
+        height: 70vh;
+        overflow-y: auto;
+        padding: 15px;
+        background-color: #f0f2f5;
+      }
+
+      .message {
+        margin-bottom: 20px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .received {
+        align-items: flex-start;
+      }
+
+      .sent {
+        align-items: flex-end;
+      }
+
+      .message-header {
+        font-size: 12px;
+        color: #888;
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+      }
+
+      .direction-tag {
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-size: 10px;
+        margin-right: 5px;
+      }
+
+      .received .direction-tag {
+        background-color: #e5f0ff;
+        color: #0084ff;
+      }
+
+      .sent .direction-tag {
+        background-color: #daf1e4;
+        color: #00a650;
+      }
+
+      .message-content {
+        max-width: 80%;
+        padding: 10px 15px;
+        border-radius: 10px;
+        position: relative;
+      }
+
+      .received .message-content {
+        background-color: white;
+        border: 1px solid #e0e0e0;
+      }
+
+      .sent .message-content {
+        background-color: #daf1e4;
+        border: 1px solid #c0e0d0;
+      }
+
+      .content-item {
+        margin: 5px 0;
+      }
+
+      .content-type {
+        font-weight: bold;
+        color: #666;
+      }
+
+      .image-content {
+        color: #0084ff;
+        cursor: pointer;
+      }
+
+      .image-content:hover {
+        text-decoration: underline;
+      }
+
+      .load-more {
+        text-align: center;
+        padding: 15px;
+      }
+
+      .load-more button {
+        background: none;
+        border: 1px solid #0084ff;
+        color: #0084ff;
+        padding: 8px 20px;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .load-more button:hover {
+        background-color: #0084ff;
+        color: white;
+      }
+
+      footer {
+        text-align: center;
+        padding: 15px;
+        color: #888;
+        font-size: 12px;
+        background-color: #f9f9f9;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #888;
+      }
+
+      .message-date {
+        font-weight: bold;
+        padding: 5px 0;
+        border-bottom: 1px dashed #eee;
+        margin: 15px 0;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>QQ聊天记录查看器</h1>
+        <p>可视化JSON格式的QQ聊天记录</p>
+      </header>
+
+      <div class="search-box">
+        <input type="file" id="jsonFileInput" accept=".json" />
+        <button id="loadJsonBtn">加载JSON文件</button>
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索聊天内容..." />
+        <select id="directionFilter">
+          <option value="all">所有消息</option>
+          <option value="收">收到的消息</option>
+          <option value="发">发送的消息</option>
+        </select>
+        <button id="searchBtn">搜索</button>
+      </div>
+
+      <div class="chat-container" id="chatContainer">
+        <div class="empty-state" id="emptyState">
+          <p>请加载JSON文件查看聊天记录</p>
+        </div>
+      </div>
+
+      <div class="load-more">
+        <button id="loadMoreBtn">加载更多消息</button>
+      </div>
+
+      <footer>
+        <p>QQ聊天记录查看器 &copy; 2023 | 支持JSON格式消息数据</p>
+      </footer>
+    </div>
+
+    <script>
+      // 全局变量
+      let chatData = [];
+      let currentIndex = 0;
+      const batchSize = 50;
+      let filteredData = [];
+      let currentFilter = "all";
+      let currentSearch = "";
+
+      // DOM元素
+      const chatContainer = document.getElementById("chatContainer");
+      const loadMoreBtn = document.getElementById("loadMoreBtn");
+      const searchInput = document.getElementById("searchInput");
+      const directionFilter = document.getElementById("directionFilter");
+      const searchBtn = document.getElementById("searchBtn");
+      const emptyState = document.getElementById("emptyState");
+      const loadJsonBtn = document.getElementById("loadJsonBtn");
+      const jsonFileInput = document.getElementById("jsonFileInput");
+
+      // 初始化
+      window.addEventListener("DOMContentLoaded", () => {
+        // 事件监听
+        loadMoreBtn.addEventListener("click", loadMoreMessages);
+        searchBtn.addEventListener("click", applyFilters);
+        loadJsonBtn.addEventListener("click", loadJsonFile);
+        searchInput.addEventListener("keyup", (e) => {
+          if (e.key === "Enter") applyFilters();
+        });
+        directionFilter.addEventListener("change", applyFilters);
+      });
+
+      // 加载JSON文件（使用文件选择器）
+      function loadJsonFile() {
+        const file = jsonFileInput.files[0];
+        if (!file) {
+          alert("请选择JSON文件");
+          return;
+        }
+
+        emptyState.innerHTML = "<p>加载文件中...</p>";
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const data = JSON.parse(e.target.result);
+            chatData = data;
+            processData();
+            applyFilters();
+            emptyState.style.display = "none";
+
+            // 显示加载成功的消息数量
+            const messageCount = document.createElement("div");
+            messageCount.className = "message-date";
+            messageCount.textContent = `已加载 ${chatData.length} 条消息`;
+            chatContainer.appendChild(messageCount);
+          } catch (error) {
+            console.error("解析JSON失败:", error);
+            emptyState.innerHTML = `<p>解析失败: ${error.message}</p>`;
+          }
+        };
+
+        reader.onerror = function () {
+          console.error("文件读取失败");
+          emptyState.innerHTML = "<p>文件读取失败</p>";
+        };
+
+        reader.readAsText(file);
+      }
+
+      // 处理数据
+      function processData() {
+        // 按日期分组（在实际应用中可根据需要实现）
+        // 这里简化处理，直接使用原始数据
+      }
+
+      // 应用过滤条件
+      function applyFilters() {
+        if (chatData.length === 0) {
+          emptyState.innerHTML = "<p>请先加载JSON文件</p>";
+          emptyState.style.display = "block";
+          return;
+        }
+
+        currentFilter = directionFilter.value;
+        currentSearch = searchInput.value.toLowerCase();
+
+        // 过滤数据
+        filteredData = chatData.filter((message) => {
+          // 方向过滤
+          if (currentFilter !== "all" && message.direction !== currentFilter) {
+            return false;
+          }
+
+          // 搜索过滤
+          if (currentSearch) {
+            let found = false;
+            for (const content of message.contents) {
+              if (
+                content[1] &&
+                content[1].toLowerCase().includes(currentSearch)
+              ) {
+                found = true;
+                break;
+              }
+            }
+            return found;
+          }
+
+          return true;
+        });
+
+        // 重置显示
+        currentIndex = 0;
+        chatContainer.innerHTML = "";
+
+        // 显示结果
+        if (filteredData.length === 0) {
+          emptyState.innerHTML = "<p>没有找到匹配的消息</p>";
+          emptyState.style.display = "block";
+          loadMoreBtn.style.display = "none";
+        } else {
+          emptyState.style.display = "none";
+          loadMoreBtn.style.display = "block";
+          loadMoreMessages();
+        }
+      }
+
+      // 加载更多消息
+      function loadMoreMessages() {
+        const endIndex = Math.min(
+          currentIndex + batchSize,
+          filteredData.length
+        );
+        const messagesToShow = filteredData.slice(currentIndex, endIndex);
+
+        messagesToShow.forEach((message) => {
+          const messageElement = createMessageElement(message);
+          chatContainer.appendChild(messageElement);
+        });
+
+        currentIndex = endIndex;
+
+        // 如果已加载所有消息，隐藏"加载更多"按钮
+        if (currentIndex >= filteredData.length) {
+          loadMoreBtn.style.display = "none";
+        }
+
+        // 滚动到最新添加的消息
+        // chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+
+      // 创建消息元素
+      function createMessageElement(message) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${
+          message.direction === "收" ? "received" : "sent"
+        }`;
+
+        // 消息头部（时间和方向）
+        const headerDiv = document.createElement("div");
+        headerDiv.className = "message-header";
+
+        const directionSpan = document.createElement("span");
+        directionSpan.className = "direction-tag";
+        directionSpan.textContent = message.direction;
+        headerDiv.appendChild(directionSpan);
+
+        const timeSpan = document.createElement("span");
+        timeSpan.textContent = message.time;
+        headerDiv.appendChild(timeSpan);
+
+        messageDiv.appendChild(headerDiv);
+
+        // 消息内容
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "message-content";
+
+        message.contents.forEach((content) => {
+          const contentItem = document.createElement("div");
+          contentItem.className = "content-item";
+
+          const typeSpan = document.createElement("span");
+          typeSpan.className = "content-type";
+          typeSpan.textContent = content[0] + " ";
+
+          contentItem.appendChild(typeSpan);
+
+          if (content[1]) {
+            if (content[0].includes("图片")) {
+              const imgSpan = document.createElement("span");
+              imgSpan.className = "image-content";
+              imgSpan.textContent = content[1];
+              imgSpan.onclick = () => alert("图片路径: " + content[1]);
+              contentItem.appendChild(imgSpan);
+            } else {
+              const textSpan = document.createElement("span");
+              textSpan.textContent = content[1];
+              contentItem.appendChild(textSpan);
+            }
+          }
+
+          contentDiv.appendChild(contentItem);
+        });
+
+        messageDiv.appendChild(contentDiv);
+
+        return messageDiv;
+      }
+    </script>
+  </body>
+</html>
